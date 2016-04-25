@@ -20,22 +20,41 @@ const path    = require('path')
   category：专题模板分类(电脑网用)
   commitMessage：版本日志(选填）
  */
+
+/**
+ * upload cms template
+ * @param  {[Object]}   options  [`api 接口域名`,`project 项目名`,`userName 用户名`]
+ * @param  {[Object]}   modified [fis3 files]
+ * @param  {[Object]}   total    [fis3 files]
+ * @param  {Function} next     [run other deploy plugin]
+ * @return {[null]}
+ */
 module.exports = function(options, modified, total, next) {
   // request.post()
   // console.log(modified)
-  const api = option.api
+  const api = options.api
   modified.forEach((file)=>{
     // console.log()
-    let content = file.getContent()let _content = content.replace(/\/\/.*?[\r\n]/gmi,'').replace(/\r|\n/gm,'').replace(/.*?\<\%\-\-cms_config\-\-(.*?)\-\-\/cms_config\-\-\%\>.*/gim,'$1')
-    let config = new Function('return '+_content)()
-    let type = config.path
-    let now = new Date
-    let time = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}-${now.getHours()}`
-    let name = `${type}_${options.project||''}_${file.dirname.split('/').pop()}_${time}`
+    let content  = file.getContent()
+    let _content = content.replace(/\/\/.*?[\r\n]/gmi,'').replace(/\r|\n/gm,'')
+    let _config  = /.*?\<\%\-\-cms_config\-\-(.*?)\-\-\/cms_config\-\-\%\>.*/gim.test(_content) ? RegExp.$1 : !1
+    let config
+    if(!_config)return next();
+    try{
+      config = new Function('return '+_config)().upload
+    }catch(e){
+      fis.log.error('\n\r[pcat-deploy-cms:39] parse cms_config error\n\r '.red.bold + e)
+      config = !1
+    }
+    if(!config)return next();
+    let type     = config.path
+    let now      = new Date
+    let time     = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}-${now.getHours()}`
+    let name     = `${type}.${options.project||''}.${file.dirname.split('/').pop()}.${file.getHash()}`
     
 
 
-    config = config.upload
+    // config = config
     new Promise(function(resolve,reject){
       request.get({
         url: `http://${api}/admin/template/check_template.jsp?name=${name}`
@@ -43,10 +62,11 @@ module.exports = function(options, modified, total, next) {
         var actionType = 'add'
         if(err)return reject(err);
         let rz = JSON.parse(body)
+        console.log(rz,'check ')
         if(rz.code === 0)actionType = 'edit';
         else if(rz.code === -1)return reject(err);
         resolve(actionType)
-      }) 
+      })
     }).then(function(actionType){
 
       config.name = name
@@ -60,7 +80,18 @@ module.exports = function(options, modified, total, next) {
         form:config
       },(err,r,body) => {
         err && console.error(err,r.headers)
-        body && console.log(body)
+        let rz
+        try{
+          rz = JSON.parse(body)
+        }catch(e){
+          rz = {code:-20,type:e}
+          // console.log(e,body);
+        }
+        if(rz.code <= -1){
+          fis.log.error(rz.msg)
+        }else{
+          body && console.log(body)
+        }
         // console.log(e,r.headers,body)
       })
     }).catch((err) => {
