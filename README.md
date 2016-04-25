@@ -4,9 +4,9 @@ use
 ```javascript
 fis.match('**.html',{
 	deploy:fis.plugin('cms', {
-            project: packageJson.name,
-            userName:userName,
-              api:commonConfig.api
+            project:"test",
+            userName:"jinc",
+              api:"api.pc.com.cn"
             })
 })
 ```
