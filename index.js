@@ -1,6 +1,6 @@
 'use strict'
 const request = require('request')
-const path    = require('path')
+const path = require('path')
 /*
   actionType：模板动作参数：新增(add)、修改(edit)、删除(delete)
   name: 模板名称(必填，模板的名称唯一)
@@ -30,74 +30,81 @@ const path    = require('path')
  * @return {[null]}
  */
 module.exports = function(options, modified, total, next) {
-  // request.post()
-  // console.log(modified)
-  const api = options.api
-  modified.forEach((file)=>{
-    // console.log()
-    let content  = file.getContent()
-    let _content = content.replace(/\/\/.*?[\r\n]/gmi,'').replace(/\r|\n/gm,'')
-    let _config  = /.*?\<\%\-\-cms_config\-\-(.*?)\-\-\/cms_config\-\-\%\>.*/gim.test(_content) ? RegExp.$1 : !1
-    let config
-    if(!_config)return next();
-    try{
-      config = new Function('return '+_config)().upload
-    }catch(e){
-      fis.log.error('\n\r[pcat-deploy-cms:39] parse cms_config error\n\r '.red.bold + e)
-      config = !1
-    }
-    if(!config)return next();
-    let type     = config.path
-    let now      = new Date
-    let time     = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}-${now.getHours()}`
-    let name     = `${type}.${options.project||''}.${file.dirname.split('/').pop()}.${file.getHash()}`
-    
-
-
-    // config = config
-    new Promise(function(resolve,reject){
-      request.get({
-        url: `http://${api}/admin/template/check_template.jsp?name=${name}`
-      },(err,res,body)=>{
-        var actionType = 'add'
-        if(err)return reject(err);
-        let rz = JSON.parse(body)
-        console.log(rz,'check ')
-        if(rz.code === 0)actionType = 'edit';
-        else if(rz.code === -1)return reject(err);
-        resolve(actionType)
-      })
-    }).then(function(actionType){
-
-      config.name = name
-      config.actionType = actionType
-      config.userName = options.userName
-      config.text = content
-
-    // console.log(config)
-      request.post({
-        url:`http://${api}/admin/template/action/http_template.jsp`,
-        form:config
-      },(err,r,body) => {
-        err && console.error(err,r.headers)
-        let rz
-        try{
-          rz = JSON.parse(body)
-        }catch(e){
-          rz = {code:-20,type:e}
-          // console.log(e,body);
+    // request.post()
+    // console.log(modified)
+    const api = options.api
+    modified.forEach((file) => {
+        // console.log()
+        let content = file.getContent()
+        let _content = content.replace(/\/\/.*?[\r\n]/gmi, '').replace(/\r|\n/gm, '')
+        let _config = /.*?\<\%\-\-cms_config\-\-(.*?)\-\-\/cms_config\-\-\%\>.*/gim.test(_content) ? RegExp.$1 : !1
+        let config
+        if (!_config) return next();
+        try {
+            config = new Function('return ' + _config)().upload
+        } catch (e) {
+            fis.log.error('\n\r[pcat-deploy-cms:39] parse cms_config error\n\r '.red.bold + e)
+            config = !1
         }
-        if(rz.code <= -1){
-          fis.log.error(rz.msg)
-        }else{
-          body && console.log(body)
-        }
-        // console.log(e,r.headers,body)
-      })
-    }).catch((err) => {
-      fis.log.info(err)
+
+        console.log('---------------cms config -----------------');
+        console.log(config);
+
+        if (!config) return next();
+        let type = config.path
+        let now = new Date
+        let time = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}-${now.getHours()}`
+        let name = `${type}.${options.project||''}.${file.dirname.split('/').pop()}.${file.getHash()}`
+
+        // config = config
+        new Promise(function(resolve, reject) {
+            request.get({
+                // proxy: "http://192.168.243.232:1080",
+                url: `http://${api}/admin/template/check_template.jsp?name=${name}`
+            }, (err, res, body) => {
+
+                console.log(body);
+
+                var actionType = 'add'
+                if (err) return reject(err);
+                let rz = JSON.parse(body)
+                console.log(rz, 'check ')
+                if (rz.code === 0) actionType = 'edit';
+                else if (rz.code === -1) return reject(rz.msg);
+                resolve(actionType)
+            })
+        }).then(function(actionType) {
+
+            config.name = name
+            config.actionType = actionType
+            config.userName = options.userName
+            config.text = content
+
+            // console.log(config)
+            request.post({
+                // proxy: "http://192.168.243.232:1080",
+                url: `http://${api}/admin/template/action/http_template.jsp`,
+                form: config
+            }, (err, r, body) => {
+                err && console.error(err, r.headers)
+                let rz
+                try {
+                    rz = JSON.parse(body)
+                } catch (e) {
+                    rz = { code: -20, type: e }
+                    // console.log(e,body);
+                }
+                if (rz.code <= -1) {
+                    fis.log.error(rz.msg)
+                } else {
+                    body && console.log(body)
+                }
+                // console.log(e,r.headers,body)
+            })
+        }).catch((err) => {
+            fis.log.info(err)
+        })
+
     })
-    
-  })
-  next()
+    next()
 }
