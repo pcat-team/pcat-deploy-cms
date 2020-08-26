@@ -33,78 +33,148 @@ module.exports = function(options, modified, total, next) {
     // request.post()
     // console.log(modified)
     const api = options.api
+    
+    let postArr = [];
+
     modified.forEach((file) => {
-        // console.log()
-        let content = file.getContent()
-        let _content = content.replace(/\/\/.*?[\r\n]/gmi, '').replace(/\r|\n/gm, '')
-        let _config = /.*?\<\%\-\-cms_config\-\-(.*?)\-\-\/cms_config\-\-\%\>.*/gim.test(_content) ? RegExp.$1 : !1
-        let config
-        if (!_config) return next();
-        try {
-            config = new Function('return ' + _config)().upload
-        } catch (e) {
-            fis.log.error('\n\r[pcat-deploy-cms:39] parse cms_config error\n\r '.red.bold + e)
-            config = !1
+
+        let content = file.getContent();
+        let _content = content.replace(/\/\/.*?[\r\n]/gmi, '').replace(/\r|\n/gm, '');
+        let _config = /.*?\<\%\-\-cms_config\-\-(.*?)\-\-\/cms_config\-\-\%\>.*/gim.test(_content) ? RegExp.$1 : !1;
+
+        if (_config) {
+            postArr.push(file);
         }
 
-        console.log('---------------cms config -----------------');
-        console.log(config);
+    });
 
-        if (!config) return next();
-        let type = config.path
-        let now = new Date
-        let time = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}-${now.getHours()}`
-        let name = `${type}.${options.project||''}.${file.dirname.split('/').pop()}.${file.getHash()}`
+    if (postArr.length > 0) {
+        let i = 0;
 
-        // config = config
-        new Promise(function(resolve, reject) {
-            request.get({
-                // proxy: "http://192.168.243.232:1080",
-                url: `http://${api}/admin/template/check_template.jsp?name=${name}`
-            }, (err, res, body) => {
+        function postArrDoAaain() {
+            i++;
 
-                console.log(body);
+            if (i == postArr.length) {
+                return next();
+            }
 
-                var actionType = 'add'
-                if (err) return reject(err);
-                let rz = JSON.parse(body)
-                console.log(rz, 'check ')
-                if (rz.code === 0) actionType = 'edit';
-                else if (rz.code === -1) return reject(rz.msg);
-                resolve(actionType)
+            var _start = new Date().getTime()
+
+            console.log('提交下个文件延迟10秒进行,给svn提交保留足够时间', _start)
+            setTimeout(function() {
+                var _tap = new Date().getTime()-_start
+                console.log('开始了', _tap)
+                postArrDo();
+            }, 10000);
+        }
+
+        function postArrDo() {
+            let file = postArr[i];
+            let content = file.getContent()
+            let _content = content.replace(/\/\/.*?[\r\n]/gmi, '').replace(/\r|\n/gm, '')
+            let _config = /.*?\<\%\-\-cms_config\-\-(.*?)\-\-\/cms_config\-\-\%\>.*/gim.test(_content) ? RegExp.$1 : !1
+            let config
+            // if (!_config) return next();
+            try {
+                config = new Function('return ' + _config)().upload
+            } catch (e) {
+                fis.log.error('\n\r[pcat-deploy-cms:39] parse cms_config error\n\r '.red.bold + e)
+                config = !1
+            }
+
+            console.log('---------------cms config -----------------');
+            console.log(config);
+
+            if (!config) return postArrDoAaain();
+            let type = config.path
+            let now = new Date
+            let time = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}-${now.getHours()}`
+            let name = `${type}.${options.project||''}.${file.dirname.split('/').pop()}.${file.getHash()}`
+
+            new Promise(function(resolve, reject) {
+                request.get({
+                    // proxy: "http://192.168.243.232:1080",
+                    url: `http://${api}/admin/template/check_template.jsp?name=${name}`
+                }, (err, res, body) => {
+
+                    console.log('------------get body 接口返回------------')
+                    console.log(body);
+
+                    var actionType = 'add'
+                    if (err) return reject();
+                    let rz = JSON.parse(body)
+                    console.log(rz, 'check ')
+                    if (rz.code === 0) actionType = 'edit';
+                    else if (rz.code === -1) return reject();
+                    
+                    // resolve(actionType)
+
+                    console.log('提交方式：' + actionType)
+
+                    config.name = name
+                    config.actionType = actionType
+                    config.userName = options.userName
+                    config.text = content
+
+                    let postUrl = `http://${api}/admin/template/action/http_template.jsp`;
+
+                    console.log('postUrl:', postUrl)
+                    // console.log('------------config2-------------------------')
+                    // console.log(config)
+
+                    // console.log(config)
+                    request.post({
+                        // proxy: "http://192.168.243.232:1080",
+                        url: postUrl,
+                        form: config
+                    }, (err, r, body) => {
+
+
+
+                        console.log('--------post body 接口返回----------');
+                        console.log(body);
+
+                        err && console.error(err, r.headers)
+                        let rz
+                        try {
+                            console.log('a0')
+
+                            // svn返回的错误信息有换行问题，去掉换行，避免JSON.parse错误
+                            if (body) {
+                                body = body.replace(/[\r\n]/g,"");  
+                            }
+
+                            rz = JSON.parse(body)
+                        } catch (e) {
+                            console.log('a1')
+                            rz = { code: -20, type: e, msg: 'body信息JSON.parse出错，body信息如下：' + body}
+                            // console.log(e,body);
+                        }
+
+                        if (rz.code <= -1) {
+                            console.log('a2')
+                            fis.log.error(rz.msg)
+                        } else {
+                            console.log('a3')
+                            body && console.log(body)
+                        }
+
+                        resolve()
+
+                    })
+
+                })
+            }).then(function(actionType) {
+                postArrDoAaain();                
+            }).catch((err) => {
+                postArrDoAaain();
+                fis.log.info(err)
             })
-        }).then(function(actionType) {
 
-            config.name = name
-            config.actionType = actionType
-            config.userName = options.userName
-            config.text = content
+        }
+        postArrDo();
+    }
 
-            // console.log(config)
-            request.post({
-                // proxy: "http://192.168.243.232:1080",
-                url: `http://${api}/admin/template/action/http_template.jsp`,
-                form: config
-            }, (err, r, body) => {
-                err && console.error(err, r.headers)
-                let rz
-                try {
-                    rz = JSON.parse(body)
-                } catch (e) {
-                    rz = { code: -20, type: e }
-                    // console.log(e,body);
-                }
-                if (rz.code <= -1) {
-                    fis.log.error(rz.msg)
-                } else {
-                    body && console.log(body)
-                }
-                // console.log(e,r.headers,body)
-            })
-        }).catch((err) => {
-            fis.log.info(err)
-        })
 
-    })
     next()
 }
