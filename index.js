@@ -161,7 +161,7 @@ module.exports = function(options, modified, total, next) {
 
                         resolve()
 
-                    })
+                    }, reject)
 
                 })
             }).then(function(actionType) {
